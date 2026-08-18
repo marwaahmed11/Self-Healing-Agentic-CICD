@@ -6,3 +6,4 @@ docker
 pydantic
 fastapi
 uvicorn
+python-dotenv
