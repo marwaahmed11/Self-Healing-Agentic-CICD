@@ -1,0 +1,63 @@
+name: Pipeline Doctor
+on:
+  workflow_run:
+    workflows: ["CI", "CD"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      RUN_ID:
+        description: 'Workflow run ID to diagnose (leave empty to auto-detect latest failed CI run)'
+        required: false
+        default: ''
+      ALLOWED_ACTIONS:
+        description: 'Comma-separated allowed actions (e.g., create_pr)'
+        required: false
+        default: 'create_pr'
+      HITL_ENABLED:
+        description: 'If true, create a PR and require human review (no auto-merge)'
+        required: false
+        default: 'false'
+      AUTO_MERGE:
+        description: 'If true and HITL is false, agent may auto-merge when checks pass'
+        required: false
+        default: 'false'
+jobs:
+  doctor:
+    runs-on: self-hosted
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure') || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || true
+          pip install PyGithub google-generativeai langchain-google-genai docker langgraph
+          
+      - name: Run Pipeline Doctor
+        env:
+            GITHUB_BASE_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            GITHUB_REPO: ${{ github.repository }}
+            workflow_run_id: ${{ github.event.workflow_run.id || github.event.inputs.RUN_ID || '' }}
+            GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+            GEMINI_MODEL: gemini-3-flash-preview
+            GEMINI_TEMP: '0.2'
+            ALLOWED_ACTIONS: ${{ github.event.inputs.ALLOWED_ACTIONS || 'create_pr' }}
+            HITL_ENABLED: ${{ github.event.inputs.HITL_ENABLED || 'false' }}
+            AUTO_MERGE: ${{ github.event.inputs.AUTO_MERGE || 'true' }}
+        run: python3 agentic.py
