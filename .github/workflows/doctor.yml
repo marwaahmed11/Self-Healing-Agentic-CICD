@@ -61,3 +61,16 @@ jobs:
             HITL_ENABLED: ${{ github.event.inputs.HITL_ENABLED || 'false' }}
             AUTO_MERGE: ${{ github.event.inputs.AUTO_MERGE || 'true' }}
         run: python3 agentic.py
+
+        
+      - name: List staged artifacts
+        if: always()
+        run: ls -la agentic_tmp || true
+
+      - name: Upload Agentic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentic-artifacts
+          path: agentic_tmp/
+          if-no-files-found: warn
