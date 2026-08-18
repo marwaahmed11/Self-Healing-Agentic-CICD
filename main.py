@@ -38,7 +38,7 @@ def list_todos():
             title=todo["title"],
             description=todo["description"],
             completed=todo["completed"],
-            created_at=todo["created_at"]
+            created_at=todo["created_at"],
             ## to fail the test, you can comment out the line below and uncomment the line above
             author=todo["author"]
         )
