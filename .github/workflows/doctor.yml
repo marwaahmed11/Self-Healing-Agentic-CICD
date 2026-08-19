@@ -46,7 +46,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt || true
-          pip install PyGithub google-generativeai langchain-google-genai docker langgraph
+          pip install PyGithub google-generativeai  docker 
+          
           
       - name: Run Pipeline Doctor
         env:
@@ -60,7 +61,7 @@ jobs:
             ALLOWED_ACTIONS: ${{ github.event.inputs.ALLOWED_ACTIONS || 'create_pr' }}
             HITL_ENABLED: ${{ github.event.inputs.HITL_ENABLED || 'false' }}
             AUTO_MERGE: ${{ github.event.inputs.AUTO_MERGE || 'true' }}
-        run: python3 agentic.py
+        run: python3 agentic2.py
 
         
       - name: List staged artifacts
