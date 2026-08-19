@@ -40,8 +40,10 @@ def list_todos():
             completed=todo["completed"],
             created_at=todo["created_at"],
             ## to fail the test, you can comment out the line below and uncomment the line above
-            author=todo["author"],
-            new=todo["new"]
+            #author=todo["author"],
+            #new=todo["new"]
+            author=todo.get("author"),
+            new=todo.get("new")
         )
         for id, todo in sorted(todos_db.items())
     ]

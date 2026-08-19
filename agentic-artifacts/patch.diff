@@ -1,17 +1,18 @@
---- a/main.py+++ b/main.py@@ -20,7 +20,7 @@     description: str
+--- a/main.py+++ b/main.py@@ -20,6 +20,8 @@     description: str
      completed: bool
      created_at: datetime
--
 +    author: Optional[str] = None
++    new: Optional[bool] = None
+ 
  # FastAPI App
  app = FastAPI(title="Todo API", version="1.0.0")
- 
-@@ -39,8 +39,7 @@             description=todo["description"],
-             completed=todo["completed"],
+@@ -40,8 +42,8 @@             completed=todo["completed"],
              created_at=todo["created_at"],
--            ## to fail the test, you can comment out the line below and uncomment the line above
--            author=todo["author"]
-+            author=todo.get("author")
+             ## to fail the test, you can comment out the line below and uncomment the line above
+-            author=todo["author"],
+-            new=todo["new"]
++            author=todo.get("author"),
++            new=todo.get("new")
          )
          for id, todo in sorted(todos_db.items())
      ]
