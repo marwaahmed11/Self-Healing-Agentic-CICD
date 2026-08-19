@@ -1,0 +1,65 @@
+
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Pipeline Doctor Report</title>
+<style>
+body { font-family: Arial, sans-serif; color:#000; background:#fff; margin:24px; }
+.card { border:1px solid #ddd; padding:14px; margin-bottom:12px; }
+pre { background:#f8f8f8; padding:10px; overflow:auto; border:1px solid #e6e6e6; }
+.muted { color:#666; font-size:90%; }
+</style>
+</head>
+<body>
+<h1>Pipeline Doctor Report</h1>
+<div class="muted">Generated: 2026-08-19T19:40:31</div>
+
+<div class="card">
+<h2>Summary</h2>
+<p><strong>Status:</strong> Success</p>
+<p><strong>Iterations:</strong> 1</p>
+<p><strong>Files Modified:</strong></p>
+<ul><li>main.py</li></ul>
+</div>
+
+<div class="card">
+<h2>Iteration Timeline</h2>
+
+        <div style="margin-bottom:10px;">
+          <strong>Iteration 1 — main.py</strong>
+          <div class="muted">Strategy: Modify the list_todos function in main.py to handle the 'author' field safely. Replace the direct access 'author=todo["author"]' with 'author=todo.get("author")' or 'author=todo.get("author", "Unknown")'. This prevents the KeyError when the field is missing from the underlying data structure.</div>
+          <pre>[
+  {
+    "start_line": 23,
+    "end_line": 23,
+    "replacement": "    author: Optional[str] = None"
+  },
+  {
+    "start_line": 42,
+    "end_line": 43,
+    "replacement": "            author=todo.get(\"author\")"
+  }
+]</pre>
+          <div class="muted">Result: passed Tests passed</div>
+        </div>
+        
+</div>
+
+<div class="card">
+<h2>Artifacts</h2>
+<ul>
+<li>final_rca.json</li>
+<li>report.html</li>
+<li>patch.diff</li>
+<li>patched_files.zip</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>Reproduction</h2>
+<pre>python -m pytest tests/ -v</pre>
+</div>
+</body>
+</html>
