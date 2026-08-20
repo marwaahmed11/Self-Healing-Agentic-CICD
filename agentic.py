@@ -235,6 +235,7 @@ class AgenticState(TypedDict):
     approved: Optional[bool]
     lint_failed: Optional[bool]
 
+
 # ==========================================
 # THE NODES
 # ==========================================
