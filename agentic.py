@@ -33,12 +33,12 @@ def log(level: str, msg: str, *args) -> None:
 # Read all environment flags here so it's easy to find and modify defaults
 # ------------------
 MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "3"))
-AZURE_OPENAI_ENDPOINT = os.getenv(
-    "AZURE_OPENAI_ENDPOINT",
-    "https://monahussein-5428-resource.services.ai.azure.com/openai/v1",
-)
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+AZURE_OPENAI_ENDPOINT = (
+    os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
+    or "https://monahussein-5428-resource.services.ai.azure.com/openai/v1"
+).rstrip("/") + "/"
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "").strip() or "gpt-4.1-mini"
 AZURE_OPENAI_TEMP = float(os.getenv("AZURE_OPENAI_TEMP", "0.2"))
 
 if AZURE_OPENAI_API_KEY:
@@ -101,7 +101,11 @@ def invoke_structured(prompt: str, schema: type[BaseModel]) -> BaseModel:
             return response.output_parsed
         except Exception as error:
             last_error = error
-    raise RuntimeError("Azure OpenAI structured request failed after 3 attempts") from last_error
+    raise RuntimeError(
+        f"Azure OpenAI structured request failed after 3 attempts "
+        f"for deployment '{AZURE_OPENAI_DEPLOYMENT}'. "
+        "AZURE_OPENAI_DEPLOYMENT must exactly match the deployed model name."
+    ) from last_error
 
 def save_audit(iteration: int, name: str, prompt: str, response_text: str) -> Path:
     path = AGENTIC_TMP_DIR / f"iter_{iteration}_{name}.json"
