@@ -97,7 +97,7 @@ def delete_todo(todo_id: int):
     del todos_db[todo_id]
     return {"message": "Todo deleted successfully"}
 
-@app.deletexxxx("/todos")
+@app.delete("/todos")
 def delete_all_todos():
     """Delete all todos"""
     todos_db.clear()
