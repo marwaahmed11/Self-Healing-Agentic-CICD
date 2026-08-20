@@ -474,21 +474,39 @@ def lint_check_node(state: AgenticState) -> dict:
             
     log('INFO', "-> All patched files passed syntax checks.")
     return {"lint_failed": False}
-"""
+
+
 def test_code_node(state: AgenticState) -> dict:
     log('INFO', "NODE[test_code_node]: Injecting ALL accumulated patches into Sandbox...")
     
     repair_memory = state.get("repair_memory", {})
     repo_state = repair_memory.get("repo_state", {})
     
-    sandbox_result = run_tests(
-        project_path=".",
-        test_command="python -m pytest tests/ -v",
-        patches_dict=repo_state
-    )
+    import subprocess
 
-    success = sandbox_result.get("success", False)
-    logs = sandbox_result.get("logs", "")
+    # The repair is kept in memory until validation succeeds. Apply it only to
+    # a temporary checkout so the agent never mutates the working tree.
+    sandbox_path = Path("/tmp/agentic-validation")
+    if sandbox_path.exists():
+        import shutil
+        shutil.rmtree(sandbox_path)
+    import shutil
+    shutil.copytree(Path("."), sandbox_path, ignore=shutil.ignore_patterns(
+        ".git", ".venv", "__pycache__", "agentic_tmp"
+    ))
+    for filepath, code in repo_state.items():
+        patched_path = sandbox_path / filepath
+        patched_path.parent.mkdir(parents=True, exist_ok=True)
+        patched_path.write_text(code)
+
+    result = subprocess.run(
+        ["python3", "-m", "pytest", "tests/", "-q"],
+        cwd=sandbox_path,
+        capture_output=True,
+        text=True,
+    )
+    success = result.returncode == 0
+    logs = (result.stdout + "\n" + result.stderr)[-12000:]
     
     if success:
         log('INFO', "-> Sandbox Execution: SUCCESS")
@@ -506,7 +524,20 @@ def test_code_node(state: AgenticState) -> dict:
         "logs": logs,
         "repair_memory": repair_memory
     }
-"""
+
+
+def route_after_lint(state: AgenticState) -> str:
+    if state.get("lint_failed"):
+        return "analyze_code"
+    return "test_code"
+
+
+def route_after_test(state: AgenticState) -> str:
+    if state.get("success") or state.get("iteration_count", 0) >= MAX_ITERATIONS:
+        return "generate_rca"
+    return "analyze_code"
+
+
 def generate_rca_node(state: AgenticState) -> dict:
     log('INFO', "NODE[generate_rca_node]: Generating RCA and HTML Report...")
     repair_memory = state.get("repair_memory", {})
@@ -698,7 +729,7 @@ agent_builder.add_node("fetch_logs", fetch_logs_node)
 agent_builder.add_node("analyze_code", analyze_code_node) 
 agent_builder.add_node("fix_code", fix_code_node)
 agent_builder.add_node("lint_check", lint_check_node)
-# agent_builder.add_node("test_code", test_code_node)
+agent_builder.add_node("test_code", test_code_node)
 agent_builder.add_node("generate_rca", generate_rca_node)
 agent_builder.add_node("create_pr", create_pr_node)
 
@@ -706,14 +737,12 @@ agent_builder.add_edge(START, "fetch_logs")
 agent_builder.add_edge("fetch_logs", "analyze_code")
 agent_builder.add_edge("analyze_code", "fix_code")
 agent_builder.add_edge("fix_code", "lint_check")
-agent_builder.add_edge("lint_check", "generate_rca")
+agent_builder.add_conditional_edges("lint_check", route_after_lint)
+agent_builder.add_conditional_edges("test_code", route_after_test)
 agent_builder.add_edge("generate_rca", "create_pr")
 agent_builder.add_edge("create_pr", END)
 
-# agent_builder.add_conditional_edges("lint_check", route_after_lint)
-# agent_builder.add_conditional_edges("test_code", route_after_test)
 # agent_builder.add_conditional_edges("generate_rca", route_after_rca)
-# agent_builder.add_edge("create_pr", END)
 
 memory = MemorySaver()
 agentic_graph = agent_builder.compile(checkpointer=memory)
