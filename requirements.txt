@@ -1,7 +1,8 @@
 pytest
 PyGithub
 langgraph
-langchain-google-genai
+openai
+azure-identity
 docker
 pydantic
 fastapi

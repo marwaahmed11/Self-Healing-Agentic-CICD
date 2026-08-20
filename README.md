@@ -1,6 +1,6 @@
 # Self-Healing CI/CD Pipeline
 
-This repository demonstrates an AI-assisted self-healing pipeline that detects failed CI jobs, analyzes the failure context, proposes code fixes with Gemini, validates the changes in an isolated sandbox, and opens a pull request for review.
+This repository demonstrates an AI-assisted self-healing pipeline that detects failed CI jobs, analyzes the failure context, proposes code fixes with Azure OpenAI, validates the changes in an isolated sandbox, and opens a pull request for review.
 
 ## Project Overview
 
@@ -24,7 +24,7 @@ The included FastAPI service and test suite provide a realistic target for the a
 
 1. A workflow failure is detected or test output is collected from the sandbox.
 2. The agent inspects logs and source files to determine the root cause.
-3. Gemini generates a surgical fix.
+3. Azure OpenAI generates a surgical fix.
 4. The sandbox re-runs tests to confirm the change.
 5. If the fix passes, the agent can open a pull request for human review.
 
@@ -64,7 +64,10 @@ Copy or create the same core files in the new project:
 
 ### 5. Configure environment variables
 Set the values used by the agent before running it:
-- `GEMINI_API_KEY`
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_API_KEY`
+- `AZURE_OPENAI_API_VERSION`
+- `AZURE_OPENAI_DEPLOYMENT` (the Azure deployment name, not the base model name)
 - `GITHUB_TOKEN`
 - `GITHUB_REPO`
 - `GITHUB_BASE_BRANCH` if your default branch is not `main`
@@ -73,7 +76,10 @@ Set the values used by the agent before running it:
 
 Example:
 ```bash
-export GEMINI_API_KEY="your-key"
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+export AZURE_OPENAI_API_KEY="your-key"
+export AZURE_OPENAI_API_VERSION="2024-10-21"
+export AZURE_OPENAI_DEPLOYMENT="your-deployment-name"
 export GITHUB_TOKEN="your-github-token"
 export GITHUB_REPO="owner/repo"
 ```
@@ -99,7 +105,7 @@ python agentic.py
 
 - Python 3.10 or newer
 - Docker installed and running for sandbox execution
-- Access to a Gemini API key
+- Access to an Azure OpenAI resource and chat-model deployment
 - Access to a GitHub repository and token with write permissions if you want PR creation
 
 ## Notes

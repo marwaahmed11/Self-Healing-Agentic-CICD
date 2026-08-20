@@ -45,8 +45,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || true
-          pip install PyGithub google-generativeai  docker 
+          pip install -r requirements.txt
+          pip install PyGithub docker
           
           
       - name: Run Pipeline Doctor
@@ -55,13 +55,15 @@ jobs:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             GITHUB_REPO: ${{ github.repository }}
             workflow_run_id: ${{ github.event.workflow_run.id || github.event.inputs.RUN_ID || '' }}
-            GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-            GEMINI_MODEL: gemini-3-flash-preview
-            GEMINI_TEMP: '0.2'
+            AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+            AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+            AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+            AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+            AZURE_OPENAI_TEMP: '0.2'
             ALLOWED_ACTIONS: ${{ github.event.inputs.ALLOWED_ACTIONS || 'create_pr' }}
             HITL_ENABLED: ${{ github.event.inputs.HITL_ENABLED || 'false' }}
             AUTO_MERGE: ${{ github.event.inputs.AUTO_MERGE || 'true' }}
-        run: python3 agentic2.py
+        run: python3 agentic.py
 
         
       - name: List staged artifacts

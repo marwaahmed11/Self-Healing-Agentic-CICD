@@ -11,11 +11,13 @@ from typing import List, Dict, Any, TypedDict, Optional
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from github import Github, InputGitTreeElement
-from langchain_google_genai import ChatGoogleGenerativeAI
+from openai import OpenAI
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from pydantic import BaseModel, Field
 # from sandbox import run_tests
 
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
@@ -31,9 +33,27 @@ def log(level: str, msg: str, *args) -> None:
 # Read all environment flags here so it's easy to find and modify defaults
 # ------------------
 MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "3"))
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
-GEMINI_TEMP = float(os.getenv("GEMINI_TEMP", "0.2"))
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+AZURE_OPENAI_ENDPOINT = os.getenv(
+    "AZURE_OPENAI_ENDPOINT",
+    "https://monahussein-5428-resource.services.ai.azure.com/openai/v1",
+)
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+AZURE_OPENAI_TEMP = float(os.getenv("AZURE_OPENAI_TEMP", "0.2"))
+
+if AZURE_OPENAI_API_KEY:
+    client = OpenAI(
+        base_url=AZURE_OPENAI_ENDPOINT,
+        api_key=AZURE_OPENAI_API_KEY,
+    )
+else:
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(), "https://ai.azure.com/.default"
+    )
+    client = OpenAI(
+        base_url=AZURE_OPENAI_ENDPOINT,
+        api_key=token_provider,
+    )
 
 ALLOWED_ACTIONS = set(a.strip() for a in os.getenv("ALLOWED_ACTIONS", "create_pr").split(",") if a.strip())
 
@@ -46,8 +66,6 @@ GITHUB_BASE_BRANCH = os.getenv("GITHUB_BASE_BRANCH", "main")
 # Human-in-the-loop / approval
 HITL_ENABLED = os.getenv("HITL_ENABLED", "true").lower() == "true"
 AUTO_MERGE = os.getenv("AUTO_MERGE", "false").lower() == "true"
-
-llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL, temperature=GEMINI_TEMP)
 
 AGENTIC_TMP_DIR = Path('agentic_tmp')
 AGENTIC_TMP_DIR.mkdir(exist_ok=True)
@@ -66,6 +84,24 @@ class EditChunk(BaseModel):
 
 class FixOutput(BaseModel):
     edits: List[EditChunk] = Field(description="List of surgical edits")
+
+
+def invoke_structured(prompt: str, schema: type[BaseModel]) -> BaseModel:
+    last_error = None
+    for _ in range(3):
+        try:
+            response = client.responses.parse(
+                model=AZURE_OPENAI_DEPLOYMENT,
+                input=prompt,
+                temperature=AZURE_OPENAI_TEMP,
+                text_format=schema,
+            )
+            if response.output_parsed is None:
+                raise RuntimeError("Azure OpenAI returned no structured output")
+            return response.output_parsed
+        except Exception as error:
+            last_error = error
+    raise RuntimeError("Azure OpenAI structured request failed after 3 attempts") from last_error
 
 def save_audit(iteration: int, name: str, prompt: str, response_text: str) -> Path:
     path = AGENTIC_TMP_DIR / f"iter_{iteration}_{name}.json"
@@ -311,8 +347,7 @@ def analyze_code_node(state: AgenticState) -> dict:
     Analyze the logs and determine the root cause.
     """
     
-    structured_llm = llm.with_structured_output(AnalyzeOutput).with_retry(stop_after_attempt=3)
-    response = structured_llm.invoke(prompt)
+    response = invoke_structured(prompt, AnalyzeOutput)
     
     save_audit(state.get('iteration_count', 0), 'plan_response', prompt, str(response.model_dump()))
 
@@ -379,8 +414,7 @@ def fix_code_node(state: AgenticState) -> dict:
     Do NOT rewrite the whole file unless necessary.
     """
 
-    structured_llm = llm.with_structured_output(FixOutput).with_retry(stop_after_attempt=3)
-    response = structured_llm.invoke(prompt)
+    response = invoke_structured(prompt, FixOutput)
 
     save_audit(iteration, 'fix_response', prompt, str(response.model_dump()))
 
