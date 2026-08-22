@@ -63,7 +63,7 @@ jobs:
             ALLOWED_ACTIONS: ${{ github.event.inputs.ALLOWED_ACTIONS || 'create_pr' }}
             HITL_ENABLED: ${{ github.event.inputs.HITL_ENABLED || 'false' }}
             AUTO_MERGE: ${{ github.event.inputs.AUTO_MERGE || 'true' }}
-        run: python3 agentic.py
+        run: python3 agentic3.py
 
         
       - name: List staged artifacts

@@ -1,6 +1,6 @@
 pytest
 PyGithub
-langgraph
+google-genai
 openai
 azure-identity
 docker
