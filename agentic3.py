@@ -1,4 +1,5 @@
 from __future__ import annotations
+import ast
 import os
 import json
 import time
@@ -125,8 +126,20 @@ def apply_edits(original_code: str, edits: List[dict]) -> str:
         start = edit['start_line'] - 1
         end = edit['end_line']
         replacement = edit['replacement'].split('\n')
+        if start < 0 or end < edit['start_line'] or end > len(lines):
+            raise ValueError(
+                f"Edit range {edit['start_line']}-{edit['end_line']} is outside the file"
+            )
         lines[start:end] = replacement
-    return '\n'.join(lines)
+    patched_code = '\n'.join(lines)
+    try:
+        ast.parse(patched_code)
+    except SyntaxError as error:
+        raise SyntaxError(
+            f"Generated patch is not valid Python: {error.msg} "
+            f"at line {error.lineno}, column {error.offset}"
+        ) from error
+    return patched_code
 
 def find_callers(target_file: str) -> dict:
     target_module = Path(target_file).stem
@@ -424,6 +437,9 @@ def fix_code_step(state: AgenticState) -> dict:
     {broken_code}
 
     Do NOT rewrite the whole file unless necessary.
+    Preserve existing data models and function contracts. Do not add keyword
+    arguments to model constructors unless those fields are defined in the model.
+    Every generated replacement must leave the complete file valid Python.
     """
 
     response = invoke_structured(prompt, FixOutput)
@@ -451,7 +467,13 @@ def fix_code_step(state: AgenticState) -> dict:
         log('INFO', "-> Applied %d edits to %s", len(edits), current_file)
         
     except Exception as e:
-        log('ERROR', "Failed to apply surgical edits: %s", str(e))
+        log('ERROR', "Rejected invalid surgical patch: %s", str(e))
+        return {
+            "repair_memory": repair_memory,
+            "iteration_count": iteration + 1,
+            "lint_failed": True,
+            "logs": f"Rejected invalid patch for {current_file}: {e}",
+        }
 
     repair_memory["repo_state"] = repo_state
     
