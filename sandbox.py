@@ -64,6 +64,22 @@ def _container_logs(container: Any) -> str:
     return str(output)
 
 
+def _reset_sandbox_permissions(client: Any, image: str, sandbox_root: Path) -> None:
+    """Make files created by the root container removable by the runner user."""
+    try:
+        client.containers.run(
+            image,
+            command=["sh", "-c", "chmod -R a+rwX /app"],
+            volumes={str(sandbox_root): {"bind": "/app", "mode": "rw"}},
+            working_dir="/app",
+            detach=False,
+            remove=True,
+            network_disabled=True,
+        )
+    except Exception as error:
+        log("WARNING", "Could not reset sandbox permissions (non-fatal): %s", error)
+
+
 def run_tests(
     project_path: str | Path = ".",
     test_command: str = "python -m pytest tests/ -v",
@@ -168,6 +184,8 @@ def run_tests(
                 "logs": f"Sandbox execution failed: {error}",
             }
         finally:
+            if test_container is not None:
+                _reset_sandbox_permissions(client, sandbox_image, sandbox_root)
             for container in (install_container, test_container):
                 if container is not None:
                     try:
