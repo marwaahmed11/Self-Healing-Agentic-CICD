@@ -38,7 +38,8 @@ def list_todos():
             title=todo["title"],
             description=todo["description"],
             completed=todo["completed"],
-            created_at=todo["created_at"]
+            created_at=todo["created_at"],
+            author=todo["author"]
         )
         for id, todo in sorted(todos_db.items())
     ]
