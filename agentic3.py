@@ -12,9 +12,8 @@ from github import Github, InputGitTreeElement
 from openai import OpenAI
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from pydantic import BaseModel, Field
-# from sandbox import run_tests
-
 from dotenv import load_dotenv
+from sandbox import run_tests
 
 
 load_dotenv()
@@ -63,6 +62,8 @@ GITHUB_BASE_BRANCH = os.getenv("GITHUB_BASE_BRANCH", "main")
 
 # Human-in-the-loop / approval
 HITL_ENABLED = os.getenv("HITL_ENABLED", "true").lower() == "true"
+AUTO_MERGE = os.getenv("AUTO_MERGE", "false").lower() == "true"
+TEST_COMMAND = os.getenv("TEST_COMMAND", "python -m pytest tests/ -v")
 
 AGENTIC_TMP_DIR = Path('agentic_tmp')
 AGENTIC_TMP_DIR.mkdir(exist_ok=True)
@@ -178,7 +179,49 @@ def open_pr_with_rca(repo_full_name: str, branch_name: str, pr_title: str, pr_bo
     repo = gh.get_repo(repo_full_name)
     base_branch = GITHUB_BASE_BRANCH
     pr = repo.create_pull(title=pr_title, body=pr_body, head=branch_name, base=base_branch, draft=draft)
-    return pr.html_url, pr.number
+    return pr.html_url, pr.number, pr.node_id
+
+
+def enable_auto_merge(pull_request_node_id: str, merge_method: str = "MERGE") -> bool:
+    if not GITHUB_TOKEN:
+        log('WARNING', "No GITHUB_TOKEN; cannot enable auto-merge")
+        return False
+
+    try:
+        response = req.post(
+            "https://api.github.com/graphql",
+            json={
+                "query": """
+                mutation($input: EnablePullRequestAutoMergeInput!) {
+                  enablePullRequestAutoMerge(input: $input) {
+                    pullRequest { number merged }
+                  }
+                }
+                """,
+                "variables": {
+                    "input": {
+                        "pullRequestId": pull_request_node_id,
+                        "mergeMethod": merge_method,
+                    }
+                },
+            },
+            headers={
+                "Authorization": f"bearer {GITHUB_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        if response.status_code != 200:
+            log('WARNING', "Auto-merge GraphQL failed: %s %s", response.status_code, response.text)
+            return False
+        errors = response.json().get("errors")
+        if errors:
+            log('WARNING', "Enable auto-merge errors: %s", errors)
+            return False
+        return True
+    except Exception as error:
+        log('ERROR', "Exception enabling auto-merge: %s", error)
+        return False
 
 # ==========================================
 # THE STATE 
@@ -196,6 +239,10 @@ class AgenticState(TypedDict):
     
     rca_html_path: Optional[str]
     pr_url: Optional[str]
+    pr_number: Optional[int]
+    pr_node_id: Optional[str]
+    pr_created: Optional[bool]
+    auto_merge_requested: Optional[bool]
     approved: Optional[bool]
     lint_failed: Optional[bool]
 
@@ -442,31 +489,13 @@ def test_code_step(state: AgenticState) -> dict:
     repair_memory = state.get("repair_memory", {})
     repo_state = repair_memory.get("repo_state", {})
     
-    import subprocess
-
-    # The repair is kept in memory until validation succeeds. Apply it only to
-    # a temporary checkout so the agent never mutates the working tree.
-    sandbox_path = Path("/tmp/agentic-validation")
-    if sandbox_path.exists():
-        import shutil
-        shutil.rmtree(sandbox_path)
-    import shutil
-    shutil.copytree(Path("."), sandbox_path, ignore=shutil.ignore_patterns(
-        ".git", ".venv", "__pycache__", "agentic_tmp"
-    ))
-    for filepath, code in repo_state.items():
-        patched_path = sandbox_path / filepath
-        patched_path.parent.mkdir(parents=True, exist_ok=True)
-        patched_path.write_text(code)
-
-    result = subprocess.run(
-        ["python3", "-m", "pytest", "tests/", "-q"],
-        cwd=sandbox_path,
-        capture_output=True,
-        text=True,
+    sandbox_result = run_tests(
+        project_path=".",
+        test_command=TEST_COMMAND,
+        patches_dict=repo_state,
     )
-    success = result.returncode == 0
-    logs = (result.stdout + "\n" + result.stderr)[-12000:]
+    success = sandbox_result.get("success", False)
+    logs = sandbox_result.get("logs", "")
     
     if success:
         log('INFO', "-> Sandbox Execution: SUCCESS")
@@ -615,7 +644,7 @@ def generate_rca_step(state: AgenticState) -> dict:
 def create_pr_step(state: AgenticState) -> dict:
     log('INFO', "STEP[create_pr_step]: Creating PR with ALL patches...")
     if 'create_pr' not in ALLOWED_ACTIONS:
-        return {"pr_created": False}
+        return {"pr_created": False, "reason": "action-not-allowed"}
         
     repo_state = state.get("repair_memory", {}).get("repo_state", {})
     if not repo_state:
@@ -638,17 +667,37 @@ def create_pr_step(state: AgenticState) -> dict:
         pr_body = (
             f"Summary: Automated fix for failing tests in {target_file}.\n\n"
             f"Root cause: {strategy}\n\n"
-            f"Change: Applied edits to {target_file}.\n\n"
-            "Verification: Sandbox tests passed. Full artifacts available in the Pipeline Doctor workflow run artifacts (agentic-artifacts)."
+            f"Change: Applied edits to {len(repo_state)} file(s): {', '.join(repo_state)}.\n\n"
+            f"Verification: Docker sandbox tests passed using `{TEST_COMMAND}`.\n\n"
+            f"Workflow run: {WORKFLOW_RUN_ID or 'not provided'}\n"
+            "Artifacts: final_rca.json, report.html, patch.diff, and patched_files.zip"
         )
 
-        pr_url, pr_number = open_pr_with_rca(repo_full_name, branch_name, pr_title, pr_body, draft=False)
+        pr_url, pr_number, pr_node_id = open_pr_with_rca(
+            repo_full_name, branch_name, pr_title, pr_body, draft=False
+        )
         log('INFO', "-> PR created: %s", pr_url)
 
-        return {"pr_url": pr_url, "pr_number": pr_number}
+        auto_merge_requested = False
+        if not HITL_ENABLED and AUTO_MERGE:
+            auto_merge_requested = enable_auto_merge(pr_node_id)
+            log(
+                'INFO' if auto_merge_requested else 'WARNING',
+                "-> Auto-merge %s for PR #%s",
+                "requested" if auto_merge_requested else "could not be enabled",
+                pr_number,
+            )
+
+        return {
+            "pr_url": pr_url,
+            "pr_number": pr_number,
+            "pr_node_id": pr_node_id,
+            "pr_created": True,
+            "auto_merge_requested": auto_merge_requested,
+        }
     except Exception as e:
         log('ERROR', "-> Failed to create PR: %s", str(e))
-        return {"reason": str(e)}
+        return {"pr_created": False, "reason": str(e)}
 
 # ==========================================
 # MAIN FLOW
