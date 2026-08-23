@@ -686,11 +686,18 @@ def create_pr_step(state: AgenticState) -> dict:
         target_file = last_iter.get("target_file", "multiple files")
         strategy = last_iter.get("strategy", "Automated code repair")
         pr_title = f"Pipeline Doctor — Fix {target_file}"
+        verification_status = (
+            f"Tests passed using `{TEST_COMMAND}`."
+            if state.get("success")
+            else f"Tests did not pass within {MAX_ITERATIONS} iteration(s); manual review is required. "
+                 f"Last test command: `{TEST_COMMAND}`."
+        )
+
         pr_body = (
             f"Summary: Automated fix for failing tests in {target_file}.\n\n"
-            f"Root cause: {strategy}\n\n"
+            f"Root cause / repair strategy: {strategy}\n\n"
             f"Change: Applied edits to {len(repo_state)} file(s): {', '.join(repo_state)}.\n\n"
-            f"Verification: Docker sandbox tests passed using `{TEST_COMMAND}`.\n\n"
+            f"Verification: {verification_status}\n\n"
             f"Workflow run: {WORKFLOW_RUN_ID or 'not provided'}\n"
             "Artifacts: final_rca.json, report.html, patch.diff, and patched_files.zip"
         )
@@ -767,7 +774,25 @@ if __name__ == "__main__":
 
     state.update(generate_rca_step(state))
 
-    if state.get("success"):
+    # Create a PR whenever at least one syntactically valid patch exists.
+    # Tests passing is preferred, but a valid patch can still be opened as a
+    # review PR when the repair did not fully succeed within MAX_ITERATIONS.
+    repo_state = state.get("repair_memory", {}).get("repo_state", {})
+
+    if repo_state:
+        if state.get("success"):
+            log('INFO', "Repair successful. Creating PR...")
+        else:
+            log(
+                'WARNING',
+                "Repair incomplete, but a valid patch exists. "
+                "Creating PR for manual review..."
+            )
         state.update(create_pr_step(state))
     else:
-        log('WARNING', "Repair did not succeed within %d iteration(s). No PR will be created.", MAX_ITERATIONS)
+        log(
+            'WARNING',
+            "No valid patch was generated after %d iteration(s). "
+            "No PR will be created.",
+            MAX_ITERATIONS
+        )
